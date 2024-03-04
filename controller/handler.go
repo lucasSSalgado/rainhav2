@@ -9,10 +9,12 @@ import (
 
 	"github.com/goccy/go-json"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/patrickmn/go-cache"
 )
 
 func InitRoutes(db *pgxpool.Pool) {
 	mux := http.NewServeMux()
+	c := cache.New(cache.NoExpiration, cache.NoExpiration)
 
 	mux.HandleFunc("POST /clientes/{id}/transacoes", func(w http.ResponseWriter, r *http.Request) {
 		idString := r.PathValue("id")
@@ -22,7 +24,7 @@ func InitRoutes(db *pgxpool.Pool) {
 			return
 		}
 
-		if exists := database.CheckClient(db, id); !exists {
+		if exists := database.CheckClient(db, id, c); !exists {
 			w.WriteHeader(404)
 			return
 		}
@@ -76,7 +78,7 @@ func InitRoutes(db *pgxpool.Pool) {
 			return
 		}
 
-		if exists := database.CheckClient(db, id); !exists {
+		if exists := database.CheckClient(db, id, c); !exists {
 			w.WriteHeader(404)
 			return
 		}

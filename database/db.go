@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"rinhaV2/dto"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/patrickmn/go-cache"
 )
 
 func GetPool() *pgxpool.Pool {
@@ -16,8 +18,8 @@ func GetPool() *pgxpool.Pool {
 		panic(err)
 	}
 
-	config.MaxConns = int32(9)
-	config.MinConns = int32(9)
+	config.MaxConns = int32(7)
+	config.MinConns = int32(6)
 
 	db, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
@@ -30,9 +32,24 @@ func GetPool() *pgxpool.Pool {
 	return db
 }
 
-func CheckClient(db *pgxpool.Pool, id int64) bool {
+func CheckClient(db *pgxpool.Pool, id int64, c *cache.Cache) bool {
+	strId := strconv.Itoa(int(id))
+	val, exists := c.Get(strId)
+	if exists {
+		return val.(bool)
+	}
+
 	var found int64
-	err := db.QueryRow(context.Background(), "SELECT user_id FROM cliente WHERE user_id = $1", id).Scan(&found)
+	err := db.QueryRow(
+		context.Background(),
+		"SELECT user_id FROM cliente WHERE user_id = $1",
+		id).Scan(&found)
+
+	if err != nil {
+		c.Set(strId, false, cache.NoExpiration)
+	}
+
+	c.Set(strId, true, cache.NoExpiration)
 	return err == nil
 }
 
@@ -79,7 +96,10 @@ func Debitar(db *pgxpool.Pool, id int64, req dto.TransacoesRequest) (int64, int6
 	}
 	defer tx.Rollback(context.Background())
 
-	err = tx.QueryRow(context.Background(), "SELECT limite, saldo FROM cliente WHERE user_id = $1 FOR UPDATE", id).Scan(&limite, &saldo)
+	err = tx.QueryRow(
+		context.Background(),
+		"SELECT limite, saldo FROM cliente WHERE user_id = $1 FOR UPDATE",
+		id).Scan(&limite, &saldo)
 	if err != nil {
 		return 0, 0, err
 	}
